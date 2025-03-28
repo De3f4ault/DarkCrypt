@@ -1,4 +1,5 @@
-cryptography>=42.0.0
-click>=8.0.0
-textual
-rich
+click==8.1.7
+cryptography==42.0.2
+rich==13.7.1
+pytest==8.0.0
+inquirer==3.4.0 

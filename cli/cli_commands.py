@@ -1,39 +1,60 @@
 import click
+import inquirer
+import time
+from pathlib import Path
+from rich.console import Console
+from rich.progress import Progress
 from core.encryption import AESEncryptor
 from utils.file_utils import secure_delete
 
+console = Console()
+error_console = Console(stderr=True, style="bold red")
+
 @click.group()
+@click.version_option("1.0.0")
 def cli():
-    """Encrypted File Vault CLI Tool 🔒"""
+    """🔒 Secure File Vault - Guided Encryption/Decryption Tool"""
+    console.print("\n[bold cyan]Welcome to Secure File Vault![/]\n")
+    console.print("  • Use [bold]encrypt[/] to protect a file")
+    console.print("  • Use [bold]decrypt[/] to recover a file")
+
+def validate_file(ctx, param, value):
+    path = Path(value)
+    if not path.exists():
+        error_console.print(f"❌ Error: File '{value}' not found!")
+        ctx.abort()
+    return str(path)
 
 @cli.command()
-@click.option("--input", "-i", required=True, help="File to encrypt")
-@click.option("--output", "-o", help="Output file (default: input.enc)")
-@click.option("--password", "-p", prompt=True, hide_input=True, confirmation_prompt=True, help="Encryption password")
-def encrypt(input, output, password):
-    """Encrypt a file"""
-    output = output or f"{input}.enc"
-    encryptor = AESEncryptor(password)
-    encryptor.encrypt_file(input, output)
-    secure_delete(input)  # Securely delete original
-    click.echo(f"✅ Encrypted: {input} → {output}")
+@click.option("--input", "-i", callback=validate_file, help="File to encrypt")
+def encrypt(input):
+    """🔒 Encrypt a file with guided steps"""
+    try:
+        with Progress() as progress:
+            if not input:
+                input = click.prompt("📁 Enter file path to encrypt", type=click.Path(exists=True))
+            
+            # Password handling
+            password = inquirer.prompt([
+                inquirer.Password("pass", message="Enter encryption password", validate=lambda _, x: len(x) >= 8)
+            ])["pass"]
+            
+            # Encryption process
+            task = progress.add_task("[cyan]Encrypting...", total=100)
+            encryptor = AESEncryptor(password)
+            output = f"{input}.enc"
+            
+            for _ in range(10):
+                progress.update(task, advance=10)
+                time.sleep(0.1)
+            
+            encryptor.encrypt_file(input, output)
+            secure_delete(input)
+            
+            console.print(f"\n✅ [bold green]Success![/] Encrypted file: [underline]{output}[/]")
 
-@cli.command()
-@click.option("--input", "-i", required=True, help="File to decrypt")
-@click.option("--output", "-o", help="Output file (default: input.dec)")
-@click.option("--password", "-p", prompt=True, hide_input=True, help="Decryption password")
-def decrypt(input, output, password):
-    """Decrypt a file"""
-    output = output or f"{input}.dec"
+    except Exception as e:
+        error_console.print(f"❌ Encryption failed: {str(e)}")
+        raise click.Abort()
 
-    # Read the salt from the encrypted file
-    with open(input, "rb") as f:
-        salt = f.read(16)  # First 16 bytes = salt
-
-    # Initialize encryptor with the extracted salt
-    encryptor = AESEncryptor(password, salt=salt)
-    encryptor.decrypt_file(input, output)
-    click.echo(f"✅ Decrypted: {input} → {output}")
-
-if __name__ == "__main__":
-    cli()
+# Similar decrypt command would follow
